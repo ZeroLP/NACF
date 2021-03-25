@@ -35,6 +35,40 @@ namespace NACF.Tools
 
         public class NativeStructs
         {
+            [StructLayout(LayoutKind.Sequential)]
+            public struct UNICODE_STRING : IDisposable
+            {
+                public ushort Length;
+                public ushort MaximumLength;
+                private IntPtr buffer;
+
+                public UNICODE_STRING(string s)
+                {
+                    Length = (ushort)(s.Length * 2);
+                    MaximumLength = (ushort)(Length + 2);
+                    buffer = Marshal.StringToHGlobalUni(s);
+                }
+
+                public void Dispose()
+                {
+                    Marshal.FreeHGlobal(buffer);
+                    buffer = IntPtr.Zero;
+                }
+
+                public override string ToString()
+                {
+                    return Marshal.PtrToStringUni(buffer);
+                }
+            }
+
+            [StructLayout(LayoutKind.Explicit, Size = 8)]
+            public struct LARGE_INTEGER
+            {
+                [FieldOffset(0)] public Int64 QuadPart;
+                [FieldOffset(0)] public UInt32 LowPart;
+                [FieldOffset(4)] public Int32 HighPart;
+            }
+
             public enum VirtualProtectionType : uint
             {
                 Execute = 0x10,
