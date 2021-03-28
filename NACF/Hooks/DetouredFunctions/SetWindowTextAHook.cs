@@ -11,8 +11,7 @@ namespace NACF.Hooks.DetouredFunctions
     {
         private delegate bool SetWindowstextADelegate(IntPtr hwnd, string lpString);
 
-        private static SetWindowstextADelegate HookedInstance;
-        private static SetWindowstextADelegate OriginalInstance;
+        private static SetWindowstextADelegate HookedInstance, OriginalInstance;
 
         private static DetourEngine DEngine;
 
