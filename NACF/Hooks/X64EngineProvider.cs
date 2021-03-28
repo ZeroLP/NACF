@@ -10,9 +10,7 @@ namespace NACF.Hooks
 {
     public unsafe class X64EngineProvider
     {
-		private byte[] X64AbsoluteJmpInstructions;
-		private byte[] RelativeJmpInstructions;
-		private byte[] OriginalTargetFunctionInstructions;
+		private byte[] X64AbsoluteJmpInstructions, RelativeJmpInstructions, OriginalTargetFunctionInstructions;
 
 		public nint TargetFunctionAddress { get; private set; }
 		public nint HookedFunctionAddress { get; private set; }
@@ -71,13 +69,13 @@ namespace NACF.Hooks
 				throw new Exception($"Failed to change page protection to ExecuteReadWrite at: 0x{TargetFunctionAddress:X}");
 
 			RelativeJmpInstructions = new byte[]
-		    {
-			   0xE9,               //jmp [DWORD]
-               0x0, 0x0, 0x0, 0x0 // DWORD
-            };
+			{
+				0xE9,               //jmp [DWORD]
+				0x0, 0x0, 0x0, 0x0 // DWORD
+			};
 
 			fixed (byte* allocInstructions = &RelativeJmpInstructions[0])
-            {
+			{
 				nint relAddr = gatewayStubAddr - (TargetFunctionAddress + RelativeJmpInstructions.Length);
 
 				*(nint*)((nint)allocInstructions + 1) = relAddr;
