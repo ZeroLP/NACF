@@ -11,8 +11,7 @@ namespace NACF.Hooks.DetouredFunctions
     {
         private delegate bool LoadLibraryADelegate(string lpFileName);
 
-        private static LoadLibraryADelegate HookedInstance;
-        private static LoadLibraryADelegate OriginalInstance;
+        private static LoadLibraryADelegate HookedInstance, OriginalInstance;
 
         private static DetourEngine DEngine;
 
