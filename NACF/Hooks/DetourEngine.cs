@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,34 +14,22 @@ namespace NACF.Hooks
 
         public DetourEngine(nint targetFuncAddr, nint hookedFuncAddr)
         {
-            if (Environment.Is64BitProcess)
-                X64HookEngineHandle = new X64EngineProvider(targetFuncAddr, hookedFuncAddr);
-            else
-                X86HookEngineHandle = new X86EngineProvider(targetFuncAddr, hookedFuncAddr);
+            switch (Environment.Is64BitProcess.ToString()){case "True": X64HookEngineHandle = new X64EngineProvider(targetFuncAddr, hookedFuncAddr);break;case "False": X86HookEngineHandle = new X86EngineProvider(targetFuncAddr, hookedFuncAddr);break;}                
         }
 
         public void Install()
         {
-            if (Environment.Is64BitProcess)
-                X64HookEngineHandle.Install();
-            else
-                X86HookEngineHandle.Install();
+            switch (Environment.Is64BitProcess.ToString()){case "True": X64HookEngineHandle.Install();break;case "False": X86HookEngineHandle.Install();break;}
         }
 
         public void Uninstall()
         {
-            if (Environment.Is64BitProcess)
-                X64HookEngineHandle.Uninstall();
-            else
-                X86HookEngineHandle.Uninstall();
+            switch (Environment.Is64BitProcess.ToString()){case "True": X64HookEngineHandle.Uninstall();break;case "False": X86HookEngineHandle.Uninstall();break;}
         }
 
         public T CallOriginal<T>(Delegate origFunc, params object[] args)
         {
-            if (Environment.Is64BitProcess)
-                return X64HookEngineHandle.CallOriginal<T>(origFunc, args);
-            else
-                return X86HookEngineHandle.CallOriginal<T>(origFunc, args);
+            switch (Environment.Is64BitProcess.ToString()){case "True": X64HookEngineHandle.CallOriginal<T>(origFunc, args);break;case "False": X86HookEngineHandle.CallOriginal<T>(origFunc, args);break;}
         }
 
         public static nint GetFunctionAddress(string libName, string funcName) => NativeImport.GetProcAddress(NativeImport.LoadLibrary(libName), funcName);
