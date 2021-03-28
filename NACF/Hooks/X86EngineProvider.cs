@@ -8,8 +8,7 @@ namespace NACF.Hooks
 {
     public unsafe class X86EngineProvider
     {
-        private byte[] RelativeJmpInstructions;
-        private byte[] OriginalTargetFunctionInstructions;
+        private byte[] RelativeJmpInstructions, OriginalTargetFunctionInstructions;
 
         public nint TargetFunctionAddress { get; private set; }
         public nint HookedFunctionAddress { get; private set; }
