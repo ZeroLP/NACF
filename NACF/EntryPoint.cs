@@ -19,12 +19,7 @@ namespace NACF
 
             var isProcX64 = Environment.Is64BitProcess;
 
-            Console.WriteLine($"PEB: 0x{(nuint)UnmanagedProviders.PEBContextManager.PEBPointer:X}");
-            Console.WriteLine($"BeingDebugged: {(isProcX64 ? pebX64.BeingDebugged : pebX86.BeingDebugged)}");
-            Console.WriteLine($"NtGlobalFlag: 0x{(isProcX64 ? pebX64.NtGlobalFlag.ToString("X") : pebX86.NtGlobalFlag.ToString("X"))}");
-
-            Console.WriteLine($"Ldr: 0x{(isProcX64 ? ((nint)pebX64.PointerToLdr).ToString("X") : ((nint)pebX86.PointerToLdr).ToString("X"))}");
-            Console.WriteLine($"Ldr Length: {(isProcX64 ? pebX64.Ldr.Length : pebX86.Ldr.Length)}");
+            Console.WriteLine($"PEB: 0x{(nuint)UnmanagedProviders.PEBContextManager.PEBPointer:X}\nBeingDebugged: {(isProcX64 ? pebX64.BeingDebugged : pebX86.BeingDebugged)}\nNtGlobalFlag: 0x{(isProcX64 ? pebX64.NtGlobalFlag.ToString("X") : pebX86.NtGlobalFlag.ToString("X"))}\nLdr: 0x{(isProcX64 ? ((nint)pebX64.PointerToLdr).ToString("X") : ((nint)pebX86.PointerToLdr).ToString("X"))}\nLdr Length: {(isProcX64 ? pebX64.Ldr.Length : pebX86.Ldr.Length)}");
         }
 
         private static void HookTest()
