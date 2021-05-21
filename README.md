@@ -13,6 +13,7 @@ Current supporting features are:
  - Trampoline/Detour Hook (x86 & x64) 
  - Requesting PEB via an inline assembly call (x86 & x64)
  - Basic Anti-Debugging Check (BeingDebugged, NtGlobalFlag, ProcessHeap: Flags & ForceFlags)
+ - Basic Module Enumeration through PEB's LDR and LDR_DATA_TABLE (x86 & x64)
 
 
 # Hooks
