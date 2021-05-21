@@ -13,19 +13,23 @@ namespace NACF.RuntimeIntegrity
 
         public static bool IsUsermodeDebuggerAttached
         {
-                var pebX86 = UnmanagedProviders.PEBContextManager.GetX86PEB();
-                var pebX64 = UnmanagedProviders.PEBContextManager.GetX64PEB();
-                var isProcX64 = Environment.Is64BitProcess;
+            get
+            {
+                var peb = UnmanagedProviders.PEBContextManager.GetPEB();
 
                 //Kernel32!IsDebuggerPresent()
                 //Kernel32!CheckRemoteDebuggerPresent() -> Self Process
                 //NtDll!NtSetDebugFilterState()
                 //NtDll!RtlQueryProcessHeapInformation()
 
-                if ((isProcX64 ? pebX64.BeingDebugged : pebX86.BeingDebugged) == 1 || (isProcX64 ? pebX64.NtGlobalFlag : pebX86.NtGlobalFlag) == 0x70 || (isProcX64 ? pebX64.ProcessHeap.Flags : pebX86.ProcessHeap.Flags) > 2 || (isProcX64 ? pebX64.ProcessHeap.ForceFlags : pebX86.ProcessHeap.ForceFlags) > 0)
-                    return true
-                
+                if (peb.BeingDebugged == 1 
+                || peb.NtGlobalFlag == 0x70 
+                || peb.ProcessHeap.Flags > 2 
+                || peb.ProcessHeap.ForceFlags > 0)
+                    return true;
+
                 return false;
+            }
         }
     }
 }

@@ -9,17 +9,43 @@ namespace NACF
     {
         public unsafe static void Main()
         {
-            PEBTest();
+            EnumerateModulesTest();
+            //PEBTest();
+            //HookTest();
+        }
+
+        private unsafe static void EnumerateModulesTest()
+        {
+            var peb = UnmanagedProviders.PEBContextManager.GetPEB();
+
+            Console.WriteLine($"PointerToLdr: {peb.PointerToLdr:X}" +
+                              $"\nInMemoryOrderModuleListPtr: {(nint)peb.Ldr.InMemoryOrderModuleListPtr:X}" +
+                              $"\n");
+
+            var baseModPtr = (nint)peb.Ldr.InMemoryOrderModuleList.Blink;
+            var currModPtr = baseModPtr;
+
+            do
+            {
+                var currModEntry = Marshal.PtrToStructure<UnmanagedProviders.PEBContextManager.LDR_DATA_TABLE_ENTRY>(currModPtr);
+
+                if(!string.IsNullOrEmpty(currModEntry.FullDllName))
+                    Console.WriteLine($"[0x{currModEntry.EntryPoint:X}] {currModEntry.FullDllName} - Size: {currModEntry.SizeOfImage:X}");
+
+                currModPtr = currModEntry.InLoadOrderLinksAddress;
+            }
+            while (baseModPtr != currModPtr);
         }
 
         private unsafe static void PEBTest()
         {
-            var pebX86 = UnmanagedProviders.PEBContextManager.GetX86PEB();
-            var pebX64 = UnmanagedProviders.PEBContextManager.GetX64PEB();
+            var peb = UnmanagedProviders.PEBContextManager.GetPEB();
 
-            var isProcX64 = Environment.Is64BitProcess;
-
-            Console.WriteLine($"PEB: 0x{(nuint)UnmanagedProviders.PEBContextManager.PEBPointer:X}\nBeingDebugged: {(isProcX64 ? pebX64.BeingDebugged : pebX86.BeingDebugged)}\nNtGlobalFlag: 0x{(isProcX64 ? pebX64.NtGlobalFlag.ToString("X") : pebX86.NtGlobalFlag.ToString("X"))}\nLdr: 0x{(isProcX64 ? ((nint)pebX64.PointerToLdr).ToString("X") : ((nint)pebX86.PointerToLdr).ToString("X"))}\nLdr Length: {(isProcX64 ? pebX64.Ldr.Length : pebX86.Ldr.Length)}");
+            Console.WriteLine($"PEB: 0x{(nuint)UnmanagedProviders.PEBContextManager.PEBPointer:X}" +
+                              $"\nBeingDebugged: {peb.BeingDebugged}" +
+                              $"\nNtGlobalFlag: 0x{peb.NtGlobalFlag.ToString("X")}" +
+                              $"\nLdr: 0x{((nint)peb.PointerToLdr).ToString("X")}" +
+                              $"\nLdr Length: {peb.Ldr.Length}");
         }
 
         private static void HookTest()

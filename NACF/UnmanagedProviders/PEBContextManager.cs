@@ -13,78 +13,66 @@ namespace NACF.UnmanagedProviders
         //https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/peb/index.htm
         //https://www.aldeid.com/wiki/PEB-Process-Environment-Block
 
+        private static nuint* _PEBPointer;
         public static nuint* PEBPointer
         {
             get
             {
-                byte[] instruct = Environment.Is64BitProcess ? new byte[]
+                if((nint)_PEBPointer == 0)
                 {
-                    0x65, 0x48, 0xA1, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //mov rax, gs:60h
-                    0xC3                                                              //ret
-                } : new byte[]
-                {
-                    0x64, 0xa1, 0x30, 0x00, 0x00, 0x00,                              //mov eax, fs:30h
-                    0xC3,                                                            //ret
-                };
+                    byte[] instruct = Environment.Is64BitProcess ? new byte[]
+                    {
+                        0x65, 0x48, 0xA1, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //mov rax, gs:60h
+                        0xC3                                                              //ret
+                    } : new byte[]
+                    {
+                        0x64, 0xa1, 0x30, 0x00, 0x00, 0x00,                              //mov eax, fs:30h
+                        0xC3,                                                            //ret
+                    };
 
-                fixed (void* p = instruct)
-                {
-                    if (!NativeImport.VirtualProtect((IntPtr)p, (nuint)instruct.Length, NativeImport.NativeStructs.VirtualProtectionType.ExecuteReadWrite, out var oldProtection))
-                        throw new Exception($"Failed to change protection to ExecuteReadWrite at: 0x{(nint)p:X}");
+                    fixed (void* p = instruct)
+                    {
+                        if (!NativeImport.VirtualProtect((IntPtr)p, (nuint)instruct.Length, NativeImport.NativeStructs.VirtualProtectionType.ExecuteReadWrite, out var oldProtection))
+                            throw new Exception($"Failed to change protection to ExecuteReadWrite at: 0x{(nint)p:X}");
 
-                    var ptrToPEB = ((delegate* unmanaged[Stdcall]<nuint*>)p)();
+                        var ptrToPEB = ((delegate* unmanaged[Stdcall]<nuint*>)p)();
 
-                    if (!NativeImport.VirtualProtect((IntPtr)p, (nuint)instruct.Length, oldProtection, out var temp))
-                        throw new Exception($"Failed to change protection back to {oldProtection} at: 0x{(nint)p:X}");
+                        if (!NativeImport.VirtualProtect((IntPtr)p, (nuint)instruct.Length, oldProtection, out var temp))
+                            throw new Exception($"Failed to change protection back to {oldProtection} at: 0x{(nint)p:X}");
 
-                    return ptrToPEB;
+                        _PEBPointer = ptrToPEB;
+                    }
                 }
+
+                return _PEBPointer;
             }
         }
 
-        public static _PEBX86 GetX86PEB() => Marshal.PtrToStructure<_PEBX86>((nint)PEBPointer);
-        public static _PEBX64 GetX64PEB() => Marshal.PtrToStructure<_PEBX64>((nint)PEBPointer);
-
-        private static void TestGetPEB()
+        private static _PEB? StoredPEB;
+        public static _PEB GetPEB()
         {
-            byte[] pebInstructionsX64 = new byte[]
-            {
-                0x65, 0x48, 0xA1, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //mov rax, gs:60h
-                0x48, 0xA3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,       //mov [0x0], rax
-                0xC3                                                              //ret
-            };
-
-            nint allocatedPtrToHoldPEB = 0;
-            nint allocPebStub = NativeImport.VirtualAlloc(IntPtr.Zero, (UIntPtr)pebInstructionsX64.Length, NativeImport.NativeStructs.AllocationType.Commit, NativeImport.NativeStructs.MemoryProtection.ExecuteReadWrite);
-
-            fixed (byte* allocInstructions = pebInstructionsX64)
-            {
-                *(nint*)((nint)allocInstructions + 13) = (nint)(&allocatedPtrToHoldPEB);
-                Hooks.DetourEngine.MemCpy(allocPebStub, (nint)allocInstructions, pebInstructionsX64.Length);
-            }
-
-            delegate* unmanaged[Cdecl]<void> func = (delegate* unmanaged[Cdecl]<void>)allocPebStub;
-            func();
-
-            Console.WriteLine($"PEB ret: 0x{allocatedPtrToHoldPEB:X}");
+            if(StoredPEB == null)
+                StoredPEB = * (_PEB*)((nint)PEBPointer);
+            return (_PEB)StoredPEB;
         }
 
         [StructLayout(LayoutKind.Explicit)]
-        public struct _PEBX86
+        public struct _PEB
         {
+#if WIN86
             [FieldOffset(0x0)] public byte InheritedAddressSpace;
             [FieldOffset(0x1)] public byte ReadImageFileExecOptions;
             [FieldOffset(0x2)] public byte BeingDebugged;
             [FieldOffset(0x3)] public byte SpareBool;
             [FieldOffset(0x4)] public nint* Mutant;
-            [FieldOffset(0x8)] public nint* ImageBaseAddress;
-            [FieldOffset(0xC)] public nint* PointerToLdr; 
-            public _PEB_LDR_DATA Ldr => Marshal.PtrToStructure<_PEB_LDR_DATA>((nint)PointerToLdr); 
+            [FieldOffset(0x8)] public nint ImageBaseAddress;
+            [FieldOffset(0xC)] public nint PointerToLdr;
+            public _PEB_LDR_DATA Ldr => *(_PEB_LDR_DATA*)(PointerToLdr);
             
             [FieldOffset(0x10)] public nint* ProcessParameters;
             [FieldOffset(0x14)] public nint* SubSystemData;
             [FieldOffset(0x18)] public nint* PointerToProcessHeap; //https://www.aldeid.com/wiki/PEB-Process-Environment-Block/ProcessHeap
-            public _PEB_Process_HeapX86 ProcessHeap => Marshal.PtrToStructure<_PEB_Process_HeapX86>((nint)PointerToProcessHeap);
+            public _PEB_Process_Heap ProcessHeap => Marshal.PtrToStructure<_PEB_Process_Heap>((nint)PointerToProcessHeap);
 
             [FieldOffset(0x1C)] public nint* FastPebLock;
             [FieldOffset(0x20)] public nint* FastPebLockRoutine;
@@ -136,30 +124,26 @@ namespace NACF.UnmanagedProviders
             [FieldOffset(0x1E0)] public NativeImport.NativeStructs.LARGE_INTEGER AppCompatFlagsUser;
             [FieldOffset(0x1E8)] public nint* pShimData;
             [FieldOffset(0x1EC)] public nint* AppCompatInfo;
-            [FieldOffset(0x1F0)] public NativeImport.NativeStructs.UNICODE_STRING CSDVersion;
+            //[FieldOffset(0x1F0)] public NativeImport.NativeStructs.UNICODE_STRING CSDVersion;
             [FieldOffset(0x1F8)] public nint* ActivationContextData;
             [FieldOffset(0x1FC)] public nint* ProcessAssemblyStorageMap;
             [FieldOffset(0x200)] public nint* SystemDefaultActivationContextData;
             [FieldOffset(0x204)] public nint* SystemAssemblyStorageMap;
             [FieldOffset(0x208)] public nint MinimumStackCommit;
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        public struct _PEBX64
-        {
+#else
             [FieldOffset(0x0)] public byte InheritedAddressSpace;
             [FieldOffset(0x1)] public byte ReadImageFileExecOptions;
             [FieldOffset(0x2)] public byte BeingDebugged;
             [FieldOffset(0x3)] public byte SpareBool;
             [FieldOffset(0x8)] public nint* Mutant;
-            [FieldOffset(0x10)] public nint* ImageBaseAddress;
-            [FieldOffset(0x18)] public nint* PointerToLdr;
-            public _PEB_LDR_DATA Ldr => Marshal.PtrToStructure<_PEB_LDR_DATA>((nint)PointerToLdr);
+            [FieldOffset(0x10)] public nint ImageBaseAddress;
+            [FieldOffset(0x18)] public nint PointerToLdr;
+            public _PEB_LDR_DATA Ldr => *(_PEB_LDR_DATA*)(PointerToLdr);
 
             [FieldOffset(0x20)] public nint* ProcessParameters;
             [FieldOffset(0x28)] public nint* SubSystemData;
             [FieldOffset(0x30)] public nint* PointerToProcessHeap; //https://www.aldeid.com/wiki/PEB-Process-Environment-Block/ProcessHeap
-            public _PEB_Process_HeapX64 ProcessHeap => Marshal.PtrToStructure<_PEB_Process_HeapX64>((nint)PointerToProcessHeap);
+            public _PEB_Process_Heap ProcessHeap => Marshal.PtrToStructure<_PEB_Process_Heap>((nint)PointerToProcessHeap);
 
             [FieldOffset(0x38)] public nint* FastPebLock;
             [FieldOffset(0x40)] public nint* FastPebLockRoutine;
@@ -211,48 +195,110 @@ namespace NACF.UnmanagedProviders
             [FieldOffset(0x2D0)] public NativeImport.NativeStructs.LARGE_INTEGER AppCompatFlagsUser;
             [FieldOffset(0x2D8)] public nint* pShimData;
             [FieldOffset(0x2E0)] public nint* AppCompatInfo;
-            [FieldOffset(0x2E8)] public NativeImport.NativeStructs.UNICODE_STRING CSDVersion;
+            //[FieldOffset(0x2E8)] public NativeImport.NativeStructs.UNICODE_STRING CSDVersion;
             [FieldOffset(0x2F8)] public nint* ActivationContextData;
             [FieldOffset(0x300)] public nint* ProcessAssemblyStorageMap;
             [FieldOffset(0x308)] public nint* SystemDefaultActivationContextData;
             [FieldOffset(0x310)] public nint* SystemAssemblyStorageMap;
             [FieldOffset(0x318)] public nint MinimumStackCommit;
+#endif
         }
 
         [StructLayout(LayoutKind.Explicit)]
-        public struct _PEB_Process_HeapX64
+        public struct _PEB_Process_Heap
         {
             //https://www.aldeid.com/wiki/PEB-Process-Environment-Block/ProcessHeap
-
-            [FieldOffset(0x70)] public byte Flags;
-            [FieldOffset(0x74)] public byte ForceFlags;
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        public struct _PEB_Process_HeapX86
-        {
-            //https://www.aldeid.com/wiki/PEB-Process-Environment-Block/ProcessHeap
-
+#if WIN86
             [FieldOffset(0x40)] public byte Flags;
             [FieldOffset(0x44)] public byte ForceFlags;
+#else
+            [FieldOffset(0x70)] public byte Flags;
+            [FieldOffset(0x74)] public byte ForceFlags;
+#endif
         }
 
         [StructLayout(LayoutKind.Explicit)]
         public struct _PEB_LDR_DATA
         {
+#if WIN86
             [FieldOffset(0x0)] public ulong Length; /* Size of structure, used by ntdll.dll as structure version ID */
             [FieldOffset(0x4)] public bool Initialized; /* If set, loader data section for current process is initialized */
             [FieldOffset(0x8)] public nint* SsHandle;
-            [FieldOffset(0xC)] public _List_Entry InLoadOrderModuleList; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in load order */
-            [FieldOffset(0x14)] public _List_Entry InMemoryOrderModuleList; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in memory placement order */
-            [FieldOffset(0x1C)] public _List_Entry InInitializationOrderModuleList; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in initialization order */
+            [FieldOffset(0xC)] public nint* InLoadOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in load order */
+            [FieldOffset(0x14)] public nint* InMemoryOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in memory placement order */
+            public _List_Entry InMemoryOrderModuleList => (*(_List_Entry*)(nint)InMemoryOrderModuleListPtr);
+
+            [FieldOffset(0x1C)] public nint* InInitializationOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in initialization order */
+            [FieldOffset(0x24)] public nint* EntryInProgress;
+            [FieldOffset(0x28)] public byte ShutdownInProgress;
+            [FieldOffset(0x2C)] public nint ShutdownThreadId;
+#else
+            [FieldOffset(0x0)] public ulong Length; /* Size of structure, used by ntdll.dll as structure version ID */
+            [FieldOffset(0x4)] public bool Initialized; /* If set, loader data section for current process is initialized */
+            [FieldOffset(0x8)] public nint* SsHandle;
+            [FieldOffset(0x10)] public nint* InLoadOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in load order */
+            [FieldOffset(0x20)] public nint* InMemoryOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in memory placement order */
+            public _List_Entry InMemoryOrderModuleList => (*(_List_Entry*)(nint)InMemoryOrderModuleListPtr);
+
+            [FieldOffset(0x30)] public nint* InInitializationOrderModuleListPtr; /* Pointer to LDR_DATA_TABLE_ENTRY structure. Previous and next module in initialization order */
+            [FieldOffset(0x40)] public nint* EntryInProgress;
+            [FieldOffset(0x48)] public byte ShutdownInProgress;
+            [FieldOffset(0x50)] public nint ShutdownThreadId;
+#endif
         }
 
-        //[StructLayout(LayoutKind.Explicit)] //X86 & X64
+        [StructLayout(LayoutKind.Explicit)] 
         public struct _List_Entry
         {
-            public _List_Entry* Flink;
-            public _List_Entry* Blink;
+#if WIN86
+            [FieldOffset(0x0)] public nint* Flink;
+            [FieldOffset(0x4)] public nint* Blink;
+#else
+            [FieldOffset(0x0)] public nint* Flink;
+            [FieldOffset(0x8)] public nint* Blink;
+#endif
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        public struct LDR_DATA_TABLE_ENTRY
+        {
+#if WIN86
+            [FieldOffset(0x0)] public nint InLoadOrderLinksAddress;
+            [FieldOffset(0x8)] public nint InMemoryOrderLinksAddress;
+            [FieldOffset(0x10)] public nint InInitializationOrderLinks;
+            [FieldOffset(0x18)] public nint DllBase;
+            [FieldOffset(0x1C)] public nint EntryPoint;
+            [FieldOffset(0x20)] public uint SizeOfImage;
+            public nint FullDllNameAddress => InLoadOrderLinksAddress + 0x24;
+            public nint BaseDllNameAddress => InLoadOrderLinksAddress + 0x2C;
+
+            //https://stackoverflow.com/questions/6838302/list-entry-and-unicode-string-pinvoke-c-sharp
+            public string FullDllName => (*(NativeImport.NativeStructs.UNICODE_STRING*)FullDllNameAddress).ToString();
+            public string BaseDllName => (*(NativeImport.NativeStructs.UNICODE_STRING*)BaseDllNameAddress).ToString();
+
+            [FieldOffset(0x34)] public uint Flags;
+            [FieldOffset(0x38)] public uint ObsoleteLoadCount;
+            [FieldOffset(0x3A)] public uint TlsIndex;
+            [FieldOffset(0x48)] public nint* EntryPointActivationContext;
+#else 
+            [FieldOffset(0x0)] public nint InLoadOrderLinksAddress;
+            [FieldOffset(0x10)] public nint InMemoryOrderLinksAddress;
+            [FieldOffset(0x20)] public nint InInitializationOrderLinks;
+            [FieldOffset(0x30)] public nint DllBase;
+            [FieldOffset(0x38)] public nint EntryPoint;
+            [FieldOffset(0x40)] public uint SizeOfImage;
+            public nint FullDllNameAddress => InLoadOrderLinksAddress + 0x48;
+            public nint BaseDllNameAddress => InLoadOrderLinksAddress + 0x58;
+
+            //https://stackoverflow.com/questions/6838302/list-entry-and-unicode-string-pinvoke-c-sharp
+            public string FullDllName => (*(NativeImport.NativeStructs.UNICODE_STRING*)FullDllNameAddress).ToString();
+            public string BaseDllName => (*(NativeImport.NativeStructs.UNICODE_STRING*)BaseDllNameAddress).ToString();
+
+            [FieldOffset(0x68)] public uint Flags;
+            [FieldOffset(0x6C)] public uint LoadCount;
+            [FieldOffset(0x6E)] public uint TlsIndex;
+            [FieldOffset(0x70)] public nint* EntryPointActivationContext;
+#endif
         }
     }
 }
